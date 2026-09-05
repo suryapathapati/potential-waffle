@@ -1,35 +1,34 @@
 import { useEffect, useState } from 'react'
-import type { Tournament } from './types'
-import { loadTournaments, saveTournaments } from './lib/storage'
-import TournamentList from './components/TournamentList'
-import NewTournamentForm from './components/NewTournamentForm'
-import TournamentDashboard from './components/TournamentDashboard'
+import type { League } from './types'
+import { loadLeagues, saveLeagues } from './lib/storage'
+import LeagueList from './components/LeagueList'
+import NewLeagueForm from './components/NewLeagueForm'
+import LeagueDashboard from './components/LeagueDashboard'
 import './App.css'
 
 type View = { type: 'list' } | { type: 'create' } | { type: 'detail'; id: string }
 
 function App() {
-  const [tournaments, setTournaments] = useState<Tournament[]>(() => loadTournaments())
+  const [leagues, setLeagues] = useState<League[]>(() => loadLeagues())
   const [view, setView] = useState<View>({ type: 'list' })
 
   useEffect(() => {
-    saveTournaments(tournaments)
-  }, [tournaments])
+    saveLeagues(leagues)
+  }, [leagues])
 
-  const currentTournament =
-    view.type === 'detail' ? tournaments.find((t) => t.id === view.id) : undefined
+  const currentLeague = view.type === 'detail' ? leagues.find((l) => l.id === view.id) : undefined
 
-  function handleCreate(tournament: Tournament) {
-    setTournaments((prev) => [...prev, tournament])
-    setView({ type: 'detail', id: tournament.id })
+  function handleCreate(league: League) {
+    setLeagues((prev) => [...prev, league])
+    setView({ type: 'detail', id: league.id })
   }
 
-  function handleUpdate(updated: Tournament) {
-    setTournaments((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
+  function handleUpdate(updated: League) {
+    setLeagues((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
   }
 
   function handleDelete(id: string) {
-    setTournaments((prev) => prev.filter((t) => t.id !== id))
+    setLeagues((prev) => prev.filter((l) => l.id !== id))
     setView({ type: 'list' })
   }
 
@@ -37,14 +36,14 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <button className="brand" onClick={() => setView({ type: 'list' })}>
-          🎾 Tennis Tournament Coordinator
+          🎾 Telugu Tennis League Coordinator
         </button>
       </header>
 
       <main className="app-main">
         {view.type === 'list' && (
-          <TournamentList
-            tournaments={tournaments}
+          <LeagueList
+            leagues={leagues}
             onOpen={(id) => setView({ type: 'detail', id })}
             onCreateNew={() => setView({ type: 'create' })}
             onDelete={handleDelete}
@@ -52,21 +51,21 @@ function App() {
         )}
 
         {view.type === 'create' && (
-          <NewTournamentForm onCancel={() => setView({ type: 'list' })} onCreate={handleCreate} />
+          <NewLeagueForm onCancel={() => setView({ type: 'list' })} onCreate={handleCreate} />
         )}
 
-        {view.type === 'detail' && currentTournament && (
-          <TournamentDashboard
-            tournament={currentTournament}
+        {view.type === 'detail' && currentLeague && (
+          <LeagueDashboard
+            league={currentLeague}
             onUpdate={handleUpdate}
             onBack={() => setView({ type: 'list' })}
           />
         )}
 
-        {view.type === 'detail' && !currentTournament && (
+        {view.type === 'detail' && !currentLeague && (
           <div className="empty-state">
-            <p>Tournament not found.</p>
-            <button onClick={() => setView({ type: 'list' })}>Back to tournaments</button>
+            <p>Season not found.</p>
+            <button onClick={() => setView({ type: 'list' })}>Back to seasons</button>
           </div>
         )}
       </main>

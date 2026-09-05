@@ -1,35 +1,61 @@
-export type TournamentFormat = 'single-elimination' | 'round-robin'
+export type Group = 'A' | 'B' | 'C'
 
-export type MatchFormat = 'single-set' | 'best-of-3' | 'best-of-5'
+export const GROUPS: Group[] = ['A', 'B', 'C']
 
 export interface Player {
   id: string
   name: string
+  group: Group
 }
 
-export interface SetScore {
-  p1: number
-  p2: number
-}
-
-export interface Match {
-  id: string
-  round: number
-  matchIndex: number
-  player1Id: string | null
-  player2Id: string | null
-  sets: SetScore[]
-  winnerId: string | null
-  isBye: boolean
-}
-
-export interface Tournament {
+export interface Team {
   id: string
   name: string
-  format: TournamentFormat
-  matchFormat: MatchFormat
+  playerIds: Record<Group, string | null>
+}
+
+export type SubMatchSlot = 'S1' | 'S2' | 'S3' | 'D1' | 'D2' | 'D3'
+
+export interface SetResult {
+  homeGames: number
+  awayGames: number
+  tiebreak: { home: number; away: number } | null
+}
+
+export interface SubMatch {
+  id: string
+  slot: SubMatchSlot
+  label: string
+  groups: Group[]
+  result: SetResult | null
+  forfeitWinner: 'home' | 'away' | null
+}
+
+export type FixtureStage = 'league' | 'semifinal' | 'final' | 'bronze'
+
+export interface Fixture {
+  id: string
+  stage: FixtureStage
+  round: number
+  label: string | null
+  homeTeamId: string | null
+  awayTeamId: string | null
+  scheduledDate: string | null
+  wholeForfeitWinnerTeamId: string | null
+  notes: string
+  subMatches: SubMatch[]
+}
+
+export type LeagueStage = 'setup' | 'in-progress'
+
+export interface League {
+  id: string
+  name: string
+  teamCount: number
   players: Player[]
-  matches: Match[]
+  teams: Team[]
+  fixtures: Fixture[]
+  teamsLocked: boolean
+  playoffsGenerated: boolean
   createdAt: number
-  started: boolean
 }

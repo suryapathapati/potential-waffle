@@ -1,46 +1,34 @@
-import type { Match, MatchFormat, SetScore } from '../types'
+import type { SetResult, SubMatch } from '../types'
 
-export function setsNeededToWin(format: MatchFormat): number {
-  if (format === 'single-set') return 1
-  if (format === 'best-of-3') return 2
-  return 3
+export function getSubMatchWinner(sub: SubMatch): 'home' | 'away' | null {
+  if (sub.forfeitWinner) return sub.forfeitWinner
+  return getSetWinner(sub.result)
 }
 
-export function getSetWinner(set: SetScore): 'p1' | 'p2' | null {
-  if (set.p1 === set.p2) return null
-  return set.p1 > set.p2 ? 'p1' : 'p2'
+export function getSetWinner(result: SetResult | null): 'home' | 'away' | null {
+  if (!result) return null
+  if (result.homeGames === result.awayGames) return null
+  return result.homeGames > result.awayGames ? 'home' : 'away'
 }
 
-export function countSetWins(sets: SetScore[]): { p1: number; p2: number } {
-  let p1 = 0
-  let p2 = 0
-  for (const set of sets) {
-    const winner = getSetWinner(set)
-    if (winner === 'p1') p1++
-    else if (winner === 'p2') p2++
+export function isTiebreakSet(result: SetResult): boolean {
+  return (
+    (result.homeGames === 7 && result.awayGames === 6) ||
+    (result.homeGames === 6 && result.awayGames === 7)
+  )
+}
+
+export function formatSetScore(sub: SubMatch): string {
+  if (sub.forfeitWinner) {
+    return sub.forfeitWinner === 'home' ? 'Forfeit (home)' : 'Forfeit (away)'
   }
-  return { p1, p2 }
+  if (!sub.result) return 'Not played'
+  const { homeGames, awayGames, tiebreak } = sub.result
+  const base = `${homeGames}-${awayGames}`
+  if (tiebreak) return `${base} (${tiebreak.home}-${tiebreak.away})`
+  return base
 }
 
-export function getMatchWinnerSide(sets: SetScore[], format: MatchFormat): 'p1' | 'p2' | null {
-  const needed = setsNeededToWin(format)
-  const { p1, p2 } = countSetWins(sets)
-  if (p1 >= needed) return 'p1'
-  if (p2 >= needed) return 'p2'
-  return null
-}
-
-export function isMatchComplete(sets: SetScore[], format: MatchFormat): boolean {
-  return getMatchWinnerSide(sets, format) !== null
-}
-
-export function formatScoreLine(match: Match): string {
-  if (match.isBye) return 'BYE'
-  if (match.sets.length === 0) return 'Not played'
-  return match.sets.map((s) => `${s.p1}-${s.p2}`).join(', ')
-}
-
-export function emptySets(format: MatchFormat): SetScore[] {
-  const count = format === 'single-set' ? 1 : format === 'best-of-3' ? 3 : 5
-  return Array.from({ length: count }, () => ({ p1: 0, p2: 0 }))
+export function emptySetResult(): SetResult {
+  return { homeGames: 0, awayGames: 0, tiebreak: null }
 }
