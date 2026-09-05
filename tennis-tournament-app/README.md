@@ -13,7 +13,7 @@ A single-page web app for running the Telugu Tennis League (TTL): draw teams fro
 - **Standings** — ranked by fixture wins, then individual matches won, then total games won, then head-to-head.
 - **Playoffs** — generate semifinals from the top 4 in the standings (1v4, 2v3); winners play for Gold & Silver, losers play for Bronze.
 - **Rules reference** — an in-app summary of the league format and policies for quick lookup.
-- **Persistence** — everything is saved to your browser's local storage.
+- **Persistence** — synced to a Supabase project when configured (survives across browsers/devices, live updates between anyone viewing the same data); falls back to your browser's local storage otherwise.
 
 ## Getting started
 
@@ -23,6 +23,37 @@ npm run dev
 ```
 
 Then open the printed local URL in your browser.
+
+### Optional: persistent storage with Supabase
+
+Without any setup, seasons are kept in your browser's local storage only (each browser/device has its own separate data). To make data persist reliably and sync across sessions and devices, connect a free [Supabase](https://supabase.com) project:
+
+1. Create a project at [supabase.com](https://supabase.com), then open its SQL editor and run:
+
+   ```sql
+   create table public.leagues (
+     id text primary key,
+     data jsonb not null,
+     updated_at timestamptz not null default now()
+   );
+
+   alter table public.leagues enable row level security;
+
+   -- No login system in this app, so every reader/writer is anonymous.
+   -- If you want to restrict this later, add Supabase Auth and scope
+   -- these policies to authenticated users instead.
+   create policy "Anyone can read leagues" on public.leagues
+     for select using (true);
+   create policy "Anyone can write leagues" on public.leagues
+     for all using (true) with check (true);
+
+   alter publication supabase_realtime add table public.leagues;
+   ```
+
+2. Copy `.env.example` to `.env` and fill in your project's URL and `anon` `public` API key (Project Settings → API) — **never** the `service_role` key, which must stay server-side only.
+3. Restart `npm run dev`. Without step 2, the app just uses local storage — no code changes needed either way.
+
+Note: because there's no login system, the `anon` key and the policies above mean anyone who has the key (which ships in the built app) can read and write your league data. That's a reasonable tradeoff for a small, trusted group coordinating a league; add Supabase Auth if you need to restrict access.
 
 ## Other scripts
 
@@ -34,4 +65,4 @@ npm run lint     # lint the source
 
 ## Tech stack
 
-React + TypeScript + Vite, with no backend — all league state lives in the browser.
+React + TypeScript + Vite. Persistence is via Supabase when configured, otherwise the browser's local storage — no custom backend to run.

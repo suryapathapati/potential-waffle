@@ -1,108 +1,130 @@
 import { useEffect, useRef, useState } from 'react'
 import type { League } from '../types'
 import { loadLeagues, saveLeagues } from './storage'
+import { supabase } from './supabaseClient'
 
-interface DbDocSnapshot {
-  data(): Record<string, unknown> | undefined
+const TABLE = 'leagues'
+
+interface LeagueRow {
+  id: string
+  data: League
 }
-
-interface DbCollectionQuerySnapshot {
-  docs: DbDocSnapshot[]
-}
-
-interface DbDocumentReference {
-  set(data: Record<string, unknown>): Promise<void>
-  delete(): Promise<void>
-}
-
-interface DbCollectionReference {
-  doc(id?: string): DbDocumentReference
-  onSnapshot(
-    next: (snap: DbCollectionQuerySnapshot) => void,
-    error?: (e: unknown) => void,
-  ): () => void
-}
-
-interface Db {
-  collection(path: string): DbCollectionReference
-}
-
-const LEAGUES_COLLECTION = 'leagues'
 
 /**
- * Persists leagues to the Artifact `db` capability when this page is running as
- * a published Artifact (survives reloads and separate browser sessions), and
- * falls back to localStorage otherwise (e.g. self-hosted outside claude.ai).
+ * Persists leagues to Supabase (survives across browsers, devices and
+ * sessions, and syncs live between anyone viewing the same link) when a
+ * project is configured via VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.
+ * Falls back to localStorage otherwise.
  */
 export function useLeaguesStore() {
-  const [leagues, setLeagues] = useState<League[]>([])
-  const [ready, setReady] = useState(false)
-  const dbRef = useRef<Db | null>(null)
+  const [leagues, setLeagues] = useState<League[]>(() => (supabase ? [] : loadLeagues()))
+  const [ready, setReady] = useState(() => !supabase)
+  const usingSupabase = useRef(!!supabase)
 
   useEffect(() => {
+    if (!supabase) return
     let cancelled = false
-    let unsubscribe: (() => void) | undefined
 
-    async function init() {
-      const claude = window.claude
-      const db = claude ? ((await claude.use('db').catch(() => null)) as Db | null) : null
-      if (cancelled) return
+    supabase
+      .from(TABLE)
+      .select('id, data')
+      .then(
+        ({ data, error }) => {
+          if (cancelled) return
+          if (error) {
+            console.error('Failed to load seasons from Supabase', error)
+            setLeagues(loadLeagues())
+          } else {
+            setLeagues(((data ?? []) as LeagueRow[]).map((row) => row.data))
+          }
+          setReady(true)
+        },
+        (err) => {
+          if (cancelled) return
+          console.error('Failed to reach Supabase', err)
+          setLeagues(loadLeagues())
+          setReady(true)
+        },
+      )
 
-      if (db) {
-        dbRef.current = db
-        unsubscribe = db.collection(LEAGUES_COLLECTION).onSnapshot(
-          (snap) => {
-            setLeagues(snap.docs.map((d) => d.data() as unknown as League))
-            setReady(true)
-          },
-          () => setReady(true),
-        )
-      } else {
-        setLeagues(loadLeagues())
-        setReady(true)
-      }
-    }
+    const channel = supabase
+      .channel('leagues-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: TABLE },
+        (payload) => {
+          setLeagues((prev) => {
+            if (payload.eventType === 'DELETE') {
+              const deletedId = (payload.old as Partial<LeagueRow>).id
+              return prev.filter((l) => l.id !== deletedId)
+            }
+            const row = payload.new as LeagueRow
+            const exists = prev.some((l) => l.id === row.id)
+            return exists
+              ? prev.map((l) => (l.id === row.id ? row.data : l))
+              : [...prev, row.data]
+          })
+        },
+      )
+      .subscribe()
 
-    init()
     return () => {
       cancelled = true
-      unsubscribe?.()
+      supabase?.removeChannel(channel)
     }
   }, [])
 
-  function applyLocally(updater: (prev: League[]) => League[]) {
+  function applyLocallyIfNoSupabase(updater: (prev: League[]) => League[]) {
+    if (usingSupabase.current) return
     setLeagues((prev) => {
       const next = updater(prev)
-      if (!dbRef.current) saveLeagues(next)
+      saveLeagues(next)
       return next
     })
   }
 
   function createLeague(league: League) {
-    applyLocally((prev) => [...prev, league])
-    dbRef.current
-      ?.collection(LEAGUES_COLLECTION)
-      .doc(league.id)
-      .set(league as unknown as Record<string, unknown>)
-      .catch((err) => console.error('Failed to save season', err))
+    applyLocallyIfNoSupabase((prev) => [...prev, league])
+    if (usingSupabase.current) {
+      setLeagues((prev) => [...prev, league])
+      supabase
+        ?.from(TABLE)
+        .insert({ id: league.id, data: league })
+        .then(
+          ({ error }) => error && console.error('Failed to save season', error),
+          (err) => console.error('Failed to reach Supabase', err),
+        )
+    }
   }
 
   function updateLeague(updated: League) {
-    applyLocally((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
-    dbRef.current
-      ?.collection(LEAGUES_COLLECTION)
-      .doc(updated.id)
-      .set(updated as unknown as Record<string, unknown>)
-      .catch((err) => console.error('Failed to save season', err))
+    applyLocallyIfNoSupabase((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
+    if (usingSupabase.current) {
+      setLeagues((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
+      supabase
+        ?.from(TABLE)
+        .update({ data: updated })
+        .eq('id', updated.id)
+        .then(
+          ({ error }) => error && console.error('Failed to save season', error),
+          (err) => console.error('Failed to reach Supabase', err),
+        )
+    }
   }
 
   function deleteLeague(id: string) {
-    applyLocally((prev) => prev.filter((l) => l.id !== id))
-    dbRef.current
-      ?.collection(LEAGUES_COLLECTION)
-      .doc(id)
-      .delete()
-      .catch((err) => console.error('Failed to delete season', err))
+    applyLocallyIfNoSupabase((prev) => prev.filter((l) => l.id !== id))
+    if (usingSupabase.current) {
+      setLeagues((prev) => prev.filter((l) => l.id !== id))
+      supabase
+        ?.from(TABLE)
+        .delete()
+        .eq('id', id)
+        .then(
+          ({ error }) => error && console.error('Failed to delete season', error),
+          (err) => console.error('Failed to reach Supabase', err),
+        )
+    }
   }
 
   return { leagues, ready, createLeague, updateLeague, deleteLeague }
