@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { League } from './types'
-import { loadLeagues, saveLeagues } from './lib/storage'
+import { useLeaguesStore } from './lib/leaguesStore'
 import LeagueList from './components/LeagueList'
 import NewLeagueForm from './components/NewLeagueForm'
 import LeagueDashboard from './components/LeagueDashboard'
@@ -9,26 +9,18 @@ import './App.css'
 type View = { type: 'list' } | { type: 'create' } | { type: 'detail'; id: string }
 
 function App() {
-  const [leagues, setLeagues] = useState<League[]>(() => loadLeagues())
+  const { leagues, ready, createLeague, updateLeague, deleteLeague } = useLeaguesStore()
   const [view, setView] = useState<View>({ type: 'list' })
-
-  useEffect(() => {
-    saveLeagues(leagues)
-  }, [leagues])
 
   const currentLeague = view.type === 'detail' ? leagues.find((l) => l.id === view.id) : undefined
 
   function handleCreate(league: League) {
-    setLeagues((prev) => [...prev, league])
+    createLeague(league)
     setView({ type: 'detail', id: league.id })
   }
 
-  function handleUpdate(updated: League) {
-    setLeagues((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
-  }
-
   function handleDelete(id: string) {
-    setLeagues((prev) => prev.filter((l) => l.id !== id))
+    deleteLeague(id)
     setView({ type: 'list' })
   }
 
@@ -41,7 +33,9 @@ function App() {
       </header>
 
       <main className="app-main">
-        {view.type === 'list' && (
+        {!ready && <p className="hint-text">Loading…</p>}
+
+        {ready && view.type === 'list' && (
           <LeagueList
             leagues={leagues}
             onOpen={(id) => setView({ type: 'detail', id })}
@@ -50,19 +44,19 @@ function App() {
           />
         )}
 
-        {view.type === 'create' && (
+        {ready && view.type === 'create' && (
           <NewLeagueForm onCancel={() => setView({ type: 'list' })} onCreate={handleCreate} />
         )}
 
-        {view.type === 'detail' && currentLeague && (
+        {ready && view.type === 'detail' && currentLeague && (
           <LeagueDashboard
             league={currentLeague}
-            onUpdate={handleUpdate}
+            onUpdate={updateLeague}
             onBack={() => setView({ type: 'list' })}
           />
         )}
 
-        {view.type === 'detail' && !currentLeague && (
+        {ready && view.type === 'detail' && !currentLeague && (
           <div className="empty-state">
             <p>Season not found.</p>
             <button onClick={() => setView({ type: 'list' })}>Back to seasons</button>
