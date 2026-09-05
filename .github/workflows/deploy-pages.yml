@@ -1,0 +1,59 @@
+name: Deploy Tennis Tournament App to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tennis-tournament-app/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tennis-tournament-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tennis-tournament-app/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build
+        env:
+          GITHUB_PAGES: 'true'
+          # The Supabase "anon" / "public" key is designed to be exposed
+          # client-side (access is governed by the project's Row Level
+          # Security policies, not by keeping this key secret) — it already
+          # ships inside the built JS bundle regardless of where it's set.
+          VITE_SUPABASE_URL: https://mjqyqbnsffxksyxbwwyz.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qcXlxYm5zZmZ4a3N5eGJ3d3l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1ODY0NTgsImV4cCI6MjEwNDE2MjQ1OH0.AsGV8XCfxDnrcISFe2GiPibEVU_17rSTc3SYonOaxuQ
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: tennis-tournament-app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
